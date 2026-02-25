@@ -2,3 +2,5 @@ streamlit
 edge-tts
 openai-whisper
 streamlit-option-menu
+Pillow
+streamlit-drawable-canvas
