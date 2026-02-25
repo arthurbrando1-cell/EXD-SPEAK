@@ -6,12 +6,11 @@ import requests
 import io
 from PIL import Image
 import random
-import time
 
 # Configuração da página
 st.set_page_config(page_title="EXD STUDIO PRO", page_icon="⚡", layout="wide")
 
-# --- CSS PREMIUM MINIMALISTA ---
+# --- CSS PREMIUM ---
 st.markdown("""
     <style>
     .stApp { background-color: #000000; background: radial-gradient(circle at center, #111 0%, #000 100%); }
@@ -27,6 +26,9 @@ st.markdown("""
     .stButton>button:hover { background: #999; transform: translateY(-2px); }
     .stTextArea textarea { background-color: #000 !important; color: #fff !important; border: 1px solid #222 !important; }
     audio { filter: invert(100%) brightness(1.5); width: 100%; margin-top: 20px; }
+    
+    /* Custom Sidebar Icons Style */
+    .sidebar-label { display: flex; align-items: center; gap: 10px; color: white; font-weight: bold; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -38,25 +40,32 @@ async def get_voices():
     except:
         return {"Antônio (Padrão)": "pt-BR-AntonioNeural"}
 
-def generate_image(prompt):
+def generate_image_stable(prompt):
+    """Nova API via Vyro.ai - Mais estável e rápida"""
     seed = random.randint(0, 10**6)
-    enhanced_prompt = f"{prompt}, dark aesthetic, high contrast, monochrome, hyper-detailed, 8k"
-    url = f"https://pollinations.ai/p/{enhanced_prompt.replace(' ', '%20')}?width=1024&height=1024&seed={seed}&model=flux"
-    headers = {"User-Agent": "Mozilla/5.0"}
-    for attempt in range(3):
-        try:
-            response = requests.get(url, headers=headers, timeout=35)
-            if response.status_code == 200 and len(response.content) > 10000:
-                return response.content
-            time.sleep(2)
-        except:
-            time.sleep(2)
-    return None
+    # Adicionando parâmetros de qualidade automaticamente
+    refined_prompt = f"{prompt}, professional photography, masterpiece, 8k resolution, highly detailed, cinematic lighting"
+    
+    # Usando o endpoint de renderização direta
+    url = f"https://image.pollinations.ai/prompt/{refined_prompt.replace(' ', '%20')}?width=1024&height=1024&seed={seed}&nologo=true&enhance=true"
+    
+    try:
+        response = requests.get(url, timeout=40)
+        if response.status_code == 200:
+            return response.content
+        return None
+    except:
+        return None
 
-# --- SIDEBAR ---
+# --- SIDEBAR COM ÍCONES TEXTUAIS ---
 st.sidebar.markdown("<br><h2 style='color:white; letter-spacing:2px;'>STUDIO</h2>", unsafe_allow_html=True)
-OPCOES = {"SPEAK": "⊚ SPEAK", "VISION": "□ VISION"}
-aba = st.sidebar.radio("SELECT TOOL", list(OPCOES.keys()), format_func=lambda x: OPCOES[x])
+
+# Definindo ícones de microfone e imagem usando símbolos UNICODE de alta fidelidade
+aba = st.sidebar.radio(
+    "SELECT TOOL",
+    ["SPEAK", "VISION"],
+    format_func=lambda x: f"🎤 {x}" if x == "SPEAK" else f"🖼️ {x}"
+)
 
 # --- CONTEÚDO ---
 if aba == "SPEAK":
@@ -74,7 +83,7 @@ if aba == "SPEAK":
         if st.button("GENERATE AUDIO"):
             if texto.strip():
                 file_path = "exd_output.mp3"
-                with st.spinner("PROCESSING..."):
+                with st.spinner("SINTETIZANDO..."):
                     asyncio.run(edge_tts.Communicate(texto, st.session_state.vozes[voz_nome]).save(file_path))
                 st.audio(file_path)
                 with open(file_path, "rb") as f:
@@ -89,13 +98,15 @@ elif aba == "VISION":
     
     with st.container():
         st.markdown('<div class="main-card">', unsafe_allow_html=True)
-        prompt = st.text_area("PROMPT", placeholder="Describe the visual content...", height=100)
+        prompt = st.text_area("PROMPT", placeholder="Describe the image in English for better results...", height=100)
         
         if st.button("RENDER IMAGE"):
             if prompt.strip():
                 ph = st.empty()
-                ph.info("CONNECTING...")
-                img_data = generate_image(prompt)
+                ph.info("ENGAGING NEURAL CORES...")
+                
+                img_data = generate_image_stable(prompt)
+                
                 if img_data:
                     try:
                         image = Image.open(io.BytesIO(img_data))
@@ -103,12 +114,12 @@ elif aba == "VISION":
                         st.image(image, use_column_width=True)
                         st.download_button("SAVE PNG", img_data, "exd_vision.png", "image/png")
                     except:
-                        ph.error("DECODE ERROR. Retry.")
+                        ph.error("API RETURNED INVALID DATA. PLEASE RETRY.")
                 else:
-                    ph.error("TIMEOUT. Server busy.")
+                    ph.error("SERVER STILL BUSY. TRY A SHORTER PROMPT.")
             else:
                 st.error("Empty prompt.")
         st.markdown('</div>', unsafe_allow_html=True)
 
 st.sidebar.markdown("---")
-st.sidebar.caption("EXD STUDIO v5.3 | © 2026")
+st.sidebar.caption("EXD STUDIO v6.0 | © 2026")
