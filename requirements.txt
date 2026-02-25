@@ -1,4 +1,5 @@
 streamlit
 edge-tts
+openai-whisper
 moviepy==1.0.3
 proglog
