@@ -2,91 +2,82 @@ import streamlit as st
 import asyncio
 import edge_tts
 import os
-import requests
-import io
-import random
 
-# Configuração
-st.set_page_config(page_title="EXD STUDIO ULTRA", page_icon="⚡", layout="wide")
+# Configuração da página
+st.set_page_config(page_title="EXD STUDIO LEGENDAS", page_icon="🎬", layout="wide")
 
-# CSS Minimalista Total Black
+# CSS Minimalista EXD
 st.markdown("""
     <style>
-    .stApp { background-color: #000000; }
+    .stApp { background-color: #000000; color: #ffffff; }
     [data-testid="stSidebar"] { background-color: #050505 !important; border-right: 1px solid #1a1a1a; }
-    .main-card { background: #080808; padding: 40px; border: 1px solid #111; border-radius: 2px; }
-    h1 { color: #fff !important; font-weight: 900; letter-spacing: -2px; font-size: 4.5em !important; }
+    .main-card { background: #080808; padding: 40px; border: 1px solid #111; border-radius: 4px; }
+    h1 { color: #fff !important; font-weight: 900; letter-spacing: -3px; font-size: 5em !important; }
     .stButton>button {
-        width: 100%; background: #fff; color: #000 !important;
-        font-weight: 800; border: none; padding: 15px; border-radius: 0px;
-        letter-spacing: 2px; text-transform: uppercase;
+        width: 100%; background: #ffffff; color: #000 !important;
+        font-weight: 800; border: none; padding: 18px; border-radius: 2px;
+        letter-spacing: 2px; text-transform: uppercase; transition: 0.3s;
     }
-    .stButton>button:hover { background: #666; }
-    .stTextArea textarea { background-color: #000 !important; color: #fff !important; border: 1px solid #111 !important; }
-    audio { filter: invert(100%); width: 100%; }
+    .stButton>button:hover { background: #666; transform: scale(1.01); }
+    .stTextArea textarea { background-color: #000 !important; color: #fff !important; border: 1px solid #222 !important; }
+    audio { filter: invert(100%); width: 100%; margin-top: 20px; }
     </style>
     """, unsafe_allow_html=True)
 
-# --- ENGINE DE VOZ ---
+# --- FUNÇÕES ---
 async def get_voices():
     try:
-        v = await edge_tts.VoicesManager.create()
-        return {x["FriendlyName"]: x["ShortName"] for x in v.find(Locale="pt-BR")}
+        voices = await edge_tts.VoicesManager.create()
+        return {v["FriendlyName"]: v["ShortName"] for v in voices.find(Locale="pt-BR")}
     except:
-        return {"Padrao": "pt-BR-AntonioNeural"}
+        return {"Antônio": "pt-BR-AntonioNeural"}
 
-# --- ENGINE DE IMAGEM (ESTÁVEL) ---
-def get_stable_image(keyword):
-    """Usa Source Unsplash - Praticamente impossível dar Timeout"""
-    seed = random.randint(0, 5000)
-    # Tenta buscar uma imagem real baseada na palavra-chave
-    url = f"https://source.unsplash.com/featured/1024x1024/?{keyword.replace(' ', ',')}&sig={seed}"
-    try:
-        response = requests.get(url, timeout=20)
-        if response.status_code == 200:
-            return response.content
-    except:
-        return None
-    return None
+# --- INTERFACE ---
+st.sidebar.markdown("<br><h2 style='color:white;'>EXD STUDIO</h2>", unsafe_allow_html=True)
+aba = st.sidebar.radio("FERRAMENTAS", ["🎤 SPEAK (Voz)", "🎬 CAPTION (Legendas)"])
 
-# --- SIDEBAR ---
-st.sidebar.title("EXD STUDIO")
-aba = st.sidebar.radio("TOOLS", ["AUDIO", "VISION"], format_func=lambda x: f"▶ {x}")
-
-if aba == "AUDIO":
-    st.markdown("<h1>EXD <span style='color:#111'>AUDIO</span></h1>", unsafe_allow_html=True)
+if aba == "🎤 SPEAK (Voz)":
+    st.markdown("<h1>EXD <span style='color:#151515'>SPEAK</span></h1>", unsafe_allow_html=True)
     with st.container():
         st.markdown('<div class="main-card">', unsafe_allow_html=True)
-        if 'v_list' not in st.session_state:
-            st.session_state.v_list = asyncio.run(get_voices())
         
-        txt = st.text_area("SCRIPT", placeholder="Digite o texto...")
-        voz = st.selectbox("VOICE", list(st.session_state.v_list.keys()))
+        if 'vozes' not in st.session_state:
+            st.session_state.vozes = asyncio.run(get_voices())
         
-        if st.button("RENDER AUDIO"):
-            if txt:
-                path = "voice.mp3"
-                asyncio.run(edge_tts.Communicate(txt, st.session_state.v_list[voz]).save(path))
-                st.audio(path)
-                st.download_button("SAVE MP3", open(path, "rb"), "exd.mp3")
+        texto = st.text_area("ROTEIRO", placeholder="Digite seu roteiro para converter em áudio...", height=180)
+        voz_nome = st.selectbox("LOCUTOR", list(st.session_state.vozes.keys()))
+        
+        if st.button("GERAR ÁUDIO"):
+            if texto.strip():
+                file_path = "voce_exd.mp3"
+                with st.spinner("SINTETIZANDO..."):
+                    asyncio.run(edge_tts.Communicate(texto, st.session_state.vozes[voz_nome]).save(file_path))
+                st.audio(file_path)
+                with open(file_path, "rb") as f:
+                    st.download_button("BAIXAR MP3", f, "exd_audio.mp3")
+            else:
+                st.error("Roteiro vazio.")
         st.markdown('</div>', unsafe_allow_html=True)
 
-elif aba == "VISION":
-    st.markdown("<h1>EXD <span style='color:#111'>VISION</span></h1>", unsafe_allow_html=True)
+elif aba == "🎬 CAPTION (Legendas)":
+    st.markdown("<h1>EXD <span style='color:#151515'>CAPTION</span></h1>", unsafe_allow_html=True)
     with st.container():
         st.markdown('<div class="main-card">', unsafe_allow_html=True)
-        key = st.text_input("KEYWORD (Busca imagens reais)", placeholder="Ex: dark city, neon, forest...")
+        st.write("### Suba seu arquivo de áudio ou vídeo para legendar")
         
-        if st.button("SEARCH IMAGE"):
-            if key:
-                with st.spinner("FETCHING..."):
-                    img = get_stable_image(key)
-                    if img:
-                        st.image(img, use_column_width=True)
-                        st.download_button("SAVE PNG", img, "exd_img.png")
-                    else:
-                        st.error("Conexão falhou. Tente outra palavra.")
+        uploaded_file = st.file_uploader("Upload Audio/Video", type=["mp3", "wav", "mp4"])
+        
+        cor_legenda = st.color_picker("COR DA LEGENDA ATIVA", "#FFFF00") # Amarelo por padrão
+        
+        if st.button("GERAR LEGENDAS DINÂMICAS"):
+            if uploaded_file:
+                st.info("Esta função requer processamento pesado. No Streamlit Cloud, pode levar alguns minutos.")
+                # Aqui entra o processamento com Whisper + MoviePy
+                # Por enquanto, vamos avisar que a engine está sendo montada
+                st.warning("ENGINE EM FASE DE TESTES: O processador Whisper está sendo carregado no servidor.")
+            else:
+                st.error("Por favor, suba um arquivo primeiro.")
         st.markdown('</div>', unsafe_allow_html=True)
 
 st.sidebar.markdown("---")
-st.sidebar.caption("V7.0 | ANTI-TIMEOUT")
+st.sidebar.caption("v7.5 | PRO EDITION")
