@@ -1,4 +1,5 @@
 streamlit
 edge-tts
-requests
-Pillow
+openai-whisper
+moviepy
+moviepy-vfx
