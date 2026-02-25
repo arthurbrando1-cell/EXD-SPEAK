@@ -2,145 +2,106 @@ import streamlit as st
 import asyncio
 import edge_tts
 import os
+import requests
+import io
+from PIL import Image
 
 # Configuração da página
-st.set_page_config(page_title="EXD SPEAK ULTIMATE", page_icon="🎙️", layout="centered")
+st.set_page_config(page_title="EXD STUDIO", page_icon="⚡", layout="wide")
 
-# CSS Avançado: Fundo Animado, Gradientes e Ícones
+# CSS Minimalista Premium
 st.markdown("""
     <style>
-    /* Fundo Animado Dark Minimal */
-    .stApp {
-        background: linear-gradient(-45deg, #000000, #111111, #050505, #1a1a1a);
-        background-size: 400% 400%;
-        animation: gradient 12s ease infinite;
-    }
-    @keyframes gradient {
-        0% { background-position: 0% 50%; }
-        50% { background-position: 100% 50%; }
-        100% { background-position: 0% 50%; }
-    }
-
-    /* Card com Efeito de Vidro Fumê */
+    .stApp { background-color: #000000; }
+    [data-testid="stSidebar"] { background-color: #050505; border-right: 1px solid #111; }
     .main-card {
-        background: rgba(10, 10, 10, 0.8);
-        backdrop-filter: blur(20px);
-        border-radius: 16px;
-        padding: 40px;
-        border: 1px solid rgba(255, 255, 255, 0.05);
-        box-shadow: 0 25px 50px rgba(0, 0, 0, 0.9);
+        background: rgba(10, 10, 10, 0.9);
+        padding: 30px;
+        border-radius: 12px;
+        border: 1px solid #1a1a1a;
     }
-
-    /* Título com Gradiente Branco/Cinza */
-    .glitch-title {
-        background: linear-gradient(to right, #ffffff, #666666);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        font-weight: 900;
-        font-size: 3em;
-        text-align: center;
-        margin-bottom: 10px;
-    }
-
-    /* Botão com Gradiente Metálico */
+    h1, h2, h3 { color: #ffffff !important; font-family: 'Inter', sans-serif; }
     .stButton>button {
         width: 100%;
-        background: linear-gradient(90deg, #333333, #ffffff, #333333);
-        background-size: 200% auto;
-        color: #000 !important;
+        background: #ffffff;
+        color: #000;
+        font-weight: bold;
+        border-radius: 4px;
         border: none;
-        padding: 14px;
-        font-weight: 800;
-        border-radius: 8px;
-        transition: 0.5s;
-        text-transform: uppercase;
-        letter-spacing: 2px;
     }
-    .stButton>button:hover {
-        background-position: right center;
-        transform: scale(1.01);
-    }
-
-    /* Área de texto e Inputs */
-    .stTextArea textarea {
-        background-color: rgba(0,0,0,0.9) !important;
-        color: white !important;
-        border: 1px solid #222 !important;
-    }
-    
-    /* Player de Áudio Invertido (Dark) */
-    audio { filter: invert(100%) hue-rotate(180deg); width: 100%; margin-top: 20px; }
-    
-    /* Esconder elementos desnecessários do Streamlit */
-    #MainMenu {visibility: hidden;}
-    footer {visibility: hidden;}
+    .stButton>button:hover { background: #cccccc; }
+    audio { filter: invert(100%); }
     </style>
     """, unsafe_allow_html=True)
 
-# Função para buscar vozes atualizadas direto da Microsoft
+# --- FUNÇÕES ---
 async def get_voices():
-    try:
-        voices = await edge_tts.VoicesManager.create()
-        br_voices = voices.find(Locale="pt-BR")
-        # Cria um dicionário com nome amigável e ID técnico
-        return {v["FriendlyName"]: v["ShortName"] for v in br_voices}
-    except:
-        # Fallback caso a API falhe
-        return {"Antônio (Padrão)": "pt-BR-AntonioNeural", "Francisca (Padrão)": "pt-BR-FranciscaNeural"}
+    voices = await edge_tts.VoicesManager.create()
+    br_voices = voices.find(Locale="pt-BR")
+    return {v["FriendlyName"]: v["ShortName"] for v in br_voices}
 
-# Cabeçalho com Ícone SVG Minimalista
-st.markdown("""
-    <div style="text-align: center; margin-bottom: 30px;">
-        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1" stroke-linecap="round" stroke-linejoin="round">
-            <rect x="4" y="2" width="16" height="20" rx="2" ry="2"></rect>
-            <circle cx="12" cy="14" r="4"></circle>
-            <line x1="12" y1="6" x2="12.01" y2="6"></line>
-        </svg>
-        <div class="glitch-title">EXD SPEAK</div>
-        <p style="color: #444; letter-spacing: 3px; font-size: 0.7em;">PREMIUM VOICE INTERFACE</p>
-    </div>
-    """, unsafe_allow_html=True)
+def query_image(prompt):
+    # Usando API gratuita do Hugging Face (Modelo estável)
+    API_URL = "https://api-inference.huggingface.co/models/runwayml/stable-diffusion-v1-5"
+    # Você pode criar um Token grátis no Hugging Face para não ter limite, 
+    # mas por enquanto vamos tentar o acesso direto.
+    headers = {"Authorization": "Bearer hf_XXX"} # Opcional: Coloque seu token aqui
+    response = requests.post(API_URL, headers=headers, json={"inputs": prompt})
+    return response.content
 
-with st.container():
-    st.markdown('<div class="main-card">', unsafe_allow_html=True)
+# --- SIDEBAR (NAVEGAÇÃO) ---
+st.sidebar.title("EXD STUDIO")
+aba = st.sidebar.radio("FERRAMENTAS", ["🎙️ EXD SPEAK (Voz)", "🖼️ EXD VISION (Imagem)"])
+
+# --- ABA 1: GERADOR DE VOZ ---
+if aba == "🎙️ EXD SPEAK (Voz)":
+    st.markdown("<h1>VOICE <span style='color:#333'>ENGINE</span></h1>", unsafe_allow_html=True)
     
-    # Busca vozes se não estiverem no cache
-    if 'vozes' not in st.session_state:
-        st.session_state.vozes = asyncio.run(get_voices())
-    
-    texto = st.text_area("ROTEIRO", placeholder="O que deseja converter para áudio?", height=150)
-
-    # Seletor de vozes completo e atualizado
-    voz_nome = st.selectbox("LOCUTOR (AUTO-SYNC)", list(st.session_state.vozes.keys()))
-    voz_id = st.session_state.vozes[voz_nome]
-
-    if st.button("GERAR ONDAS SONORAS"):
-        if not texto.strip():
-            st.error("TEXTO VAZIO")
-        else:
-            file_path = "exd_output.mp3"
-            
-            async def run_tts():
-                try:
-                    communicate = edge_tts.Communicate(texto, voz_id)
-                    await communicate.save(file_path)
-                    return True
-                except Exception as e:
-                    st.error(f"ERRO: {e}")
-                    return False
-
-            with st.spinner("SINTETIZANDO..."):
-                ok = asyncio.run(run_tts())
-            
-            if ok and os.path.exists(file_path):
+    with st.container():
+        st.markdown('<div class="main-card">', unsafe_allow_html=True)
+        if 'vozes' not in st.session_state:
+            st.session_state.vozes = asyncio.run(get_voices())
+        
+        texto = st.text_area("ROTEIRO", placeholder="Digite para narrar...", height=150)
+        voz_nome = st.selectbox("LOCUTOR", list(st.session_state.vozes.keys()))
+        
+        if st.button("GERAR ÁUDIO"):
+            if texto:
+                file_path = "output.mp3"
+                async def run_tts():
+                    await edge_tts.Communicate(texto, st.session_state.vozes[voz_nome]).save(file_path)
+                
+                with st.spinner("Sintetizando..."):
+                    asyncio.run(run_tts())
                 st.audio(file_path)
                 with open(file_path, "rb") as f:
-                    st.download_button(
-                        label="BAIXAR MP3",
-                        data=f,
-                        file_name="exd_pro_audio.mp3",
-                        mime="audio/mpeg"
-                    )
-    st.markdown('</div>', unsafe_allow_html=True)
+                    st.download_button("BAIXAR MP3", f, file_name="exd_audio.mp3")
+        st.markdown('</div>', unsafe_allow_html=True)
 
-st.markdown("<p style='text-align: center; color: #111; margin-top: 40px; font-size: 0.6em;'>VERSION 3.0 | NO LOGS | ENCRYPTED CONNECTION</p>", unsafe_allow_html=True)
+# --- ABA 2: GERADOR DE IMAGEM ---
+elif aba == "🖼️ EXD VISION (Imagem)":
+    st.markdown("<h1>VISION <span style='color:#333'>GEN</span></h1>", unsafe_allow_html=True)
+    
+    with st.container():
+        st.markdown('<div class="main-card">', unsafe_allow_html=True)
+        prompt = st.text_area("PROMPT (EM INGLÊS)", placeholder="Ex: A futuristic city in dark aesthetic, 8k, cinematic...")
+        st.info("Dica: Use o Google Tradutor para o prompt se precisar. O modelo entende melhor em Inglês.")
+        
+        if st.button("CRIAR IMAGEM"):
+            if prompt:
+                with st.spinner("Desenhando..."):
+                    image_bytes = query_image(prompt)
+                    try:
+                        image = Image.open(io.BytesIO(image_bytes))
+                        st.image(image, caption="Resultado EXD Vision", use_column_width=True)
+                        
+                        # Botão de download da imagem
+                        buf = io.BytesIO()
+                        image.save(buf, format="PNG")
+                        st.download_button("BAIXAR PNG", buf.getvalue(), "imagem_exd.png", "image/png")
+                    except:
+                        st.error("O servidor de imagem está carregado. Tente novamente em alguns segundos.")
+        st.markdown('</div>', unsafe_allow_html=True)
+
+st.sidebar.markdown("---")
+st.sidebar.caption("EXD STUDIO v3.1")
