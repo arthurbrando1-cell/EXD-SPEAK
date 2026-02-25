@@ -2,175 +2,134 @@ import streamlit as st
 import asyncio
 import edge_tts
 import whisper
-import datetime
-import io
-from PIL import Image
-from streamlit_option_menu import option_menu
-import uuid # Para gerar IDs únicos para os post-its
+import uuid
 import nest_asyncio
+from streamlit_option_menu import option_menu
 
-# Inicializa o loop para o Voice Engine não travar
 nest_asyncio.apply()
 
-# --- CONFIGURAÇÃO E ESTILO ---
-st.set_page_config(page_title="EXD STUDIO PRO", layout="wide", initial_sidebar_state="expanded")
+# --- SETUP DA PÁGINA ---
+st.set_page_config(page_title="EXD STUDIO", layout="wide", initial_sidebar_state="collapsed")
 
+# --- CSS ULTRA CUSTOM: GRID, ANIMAÇÕES E INTERFACE ---
 st.markdown("""
     <style>
     /* INTRO EXD */
-    .intro-screen { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background-color: #020202; z-index: 9999; display: flex; justify-content: center; align-items: center; animation: hide 3.5s forwards; }
-    .intro-text { font-family: 'Arial Black'; font-size: 10vw; color: #fff; letter-spacing: 20px; animation: glow 3s forwards; }
-    @keyframes glow { 0% { opacity:0; filter:blur(10px); } 50% { opacity:1; filter:blur(0px); text-shadow: 0 0 30px #9D00FF; } 100% { opacity:0; transform:scale(1.2); } }
-    @keyframes hide { 0%, 90% { opacity:1; visibility:visible; } 100% { opacity:0; visibility:hidden; } }
-    
-    /* DESIGN SISTEMA */
-    .stApp { background-color: #050505; color: #fff; }
-    [data-testid="stSidebar"] { background-color: #000 !important; border-right: 1px solid #111; }
-    .main-card { background: #0a0a0a; border: 1px solid #1a1a1a; padding: 25px; border-radius: 8px; margin-bottom: 20px; }
-    .stButton>button { width: 100%; background: #ffffff; color: #000 !important; font-weight: 900; border-radius: 2px; padding: 12px; transition: 0.3s; }
-    .stButton>button:hover { background: #9D00FF; color: #fff !important; box-shadow: 0px 0px 15px #9D00FF; }
-    h1 { font-weight: 900; letter-spacing: -3px; font-size: 3.5em !important; }
+    .intro-screen { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: #000; z-index: 9999; display: flex; justify-content: center; align-items: center; animation: fadeout 3s forwards; }
+    .intro-text { font-family: 'Arial Black'; font-size: 10vw; color: #fff; animation: glow 2s infinite; }
+    @keyframes glow { 0% { text-shadow: 0 0 10px #9D00FF; } 50% { text-shadow: 0 0 40px #00D1FF; } 100% { text-shadow: 0 0 10px #9D00FF; } }
+    @keyframes fadeout { 0%, 80% { opacity: 1; visibility: visible; } 100% { opacity: 0; visibility: hidden; } }
 
-    /* Estilo do Post-it */
+    /* FUNDO PRETO ANIMADO COM GRID BRANCO */
+    .canvas-container {
+        position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+        background-color: #050505;
+        background-image: radial-gradient(rgba(255, 255, 255, 0.1) 1px, transparent 1px);
+        background-size: 40px 40px;
+        z-index: 1;
+        overflow: auto;
+    }
+    
+    /* BOTÃO FLUTUANTE VOLTAR */
+    .btn-back {
+        position: fixed; top: 20px; left: 20px; z-index: 100;
+        background: #fff; color: #000; border: none; padding: 10px 20px;
+        font-weight: 900; border-radius: 5px; cursor: pointer;
+    }
+
+    /* BARRA LATERAL DE EDIÇÃO (OVERLAY) */
+    .edit-sidebar {
+        position: fixed; right: 20px; top: 20px; bottom: 20px; width: 300px;
+        background: rgba(10, 10, 10, 0.95); backdrop-filter: blur(10px);
+        border: 1px solid #222; z-index: 101; border-radius: 15px; padding: 20px;
+        color: white;
+    }
+
+    /* ESTILO DOS PAPELZINHOS (POST-ITS) */
     .post-it {
-        background-color: #333333; /* Fundo mais escuro */
-        border: 2px solid #555555; /* Borda visível */
-        border-radius: 10px;
-        padding: 15px;
-        margin-bottom: 15px;
-        box-shadow: 3px 3px 8px rgba(0,0,0,0.4);
-        position: relative;
-        word-wrap: break-word; /* Garante que o texto se quebre */
-    }
-    .post-it-title {
-        font-weight: bold;
-        color: #9D00FF; /* Cor vibrante para o título */
-        margin-bottom: 8px;
-        font-size: 1.1em;
-    }
-    .post-it-content {
-        color: #CCCCCC; /* Cor de texto mais clara */
-        font-size: 0.9em;
-    }
-    .post-it-id {
-        font-size: 0.7em;
-        color: #888888;
-        margin-top: 10px;
-        text-align: right;
+        display: inline-block; padding: 15px; border-radius: 5px;
+        color: #000; font-weight: bold; min-width: 150px; min-height: 150px;
+        box-shadow: 5px 5px 15px rgba(0,0,0,0.3); margin: 10px;
+        cursor: grab;
     }
     </style>
     <div class="intro-screen"><div class="intro-text">EXD</div></div>
     """, unsafe_allow_html=True)
 
-# --- FUNÇÕES DE SUPORTE ---
-def format_srt(seconds):
-    td = datetime.timedelta(seconds=seconds)
-    return f"{int(td.total_seconds()//3600):02d}:{int(td.total_seconds()%3600//60):02d}:{int(td.total_seconds()%60):02d},{int(td.microseconds/1000):03d}"
+# --- DATABASE NO SESSION STATE ---
+if 'mural_items' not in st.session_state:
+    st.session_state.mural_items = []
+if 'view' not in st.session_state:
+    st.session_state.view = "menu"
 
-VOZES = {
-    "Antônio (BR)": "pt-BR-AntonioNeural",
-    "Francisca (BR)": "pt-BR-FranciscaNeural",
-    "Guy (US)": "en-US-GuyNeural",
-    "Jenny (US)": "en-US-JennyNeural"
-}
+# --- ROTEAMENTO DE TELAS ---
 
-# --- INICIALIZA O MURAL NO SESSION_STATE ---
-if 'post_its' not in st.session_state:
-    st.session_state.post_its = []
-
-# --- SIDEBAR COM TUDO ---
-with st.sidebar:
-    st.markdown("<h2 style='text-align:center'>EXD STUDIO</h2>", unsafe_allow_html=True)
-    menu = option_menu(None, ["Voice Engine", "Smart Caption", "Mural Infinito", "SEO & Ganchos"], 
-        icons=["mic", "badge-cc", "window-grid", "lightning"], 
-        menu_icon="cast", default_index=0,
-        styles={"container": {"background-color": "#000"}, "nav-link": {"color": "#aaa", "font-size": "12px"}, "nav-link-selected": {"background-color": "#111", "border-left": "3px solid #9D00FF"}})
-
-# --- LÓGICA DAS FERRAMENTAS ---
-
-if menu == "Voice Engine":
-    st.markdown("<h1>VOICE <span style='color:#222'>ENGINE</span></h1>", unsafe_allow_html=True)
-    with st.container():
-        st.markdown('<div class="main-card">', unsafe_allow_html=True)
-        txt_v = st.text_area("Roteiro", height=150)
-        c1, c2 = st.columns(2)
-        voz = c1.selectbox("Locutor", list(VOZES.keys()))
-        vel = c2.slider("Velocidade", -50, 50, 0)
-        if st.button("GERAR ÁUDIO"):
-            asyncio.run(edge_tts.Communicate(txt_v, VOZES[voz], rate=f"{vel:+d}%").save("v.mp3"))
+# 1. TELA DE MENU/TOOLS
+if st.session_state.view == "menu":
+    with st.sidebar:
+        menu = option_menu("EXD TOOLS", ["Voice", "Caption", "Canvas Grid"], 
+            icons=["mic", "badge-cc", "grid-fill"], default_index=0)
+    
+    if menu == "Canvas Grid":
+        st.session_state.view = "canvas"
+        st.rerun()
+    
+    # Renderizar Voice e Caption normalmente...
+    if menu == "Voice":
+        st.title("VOICE ENGINE")
+        txt = st.text_area("Roteiro")
+        if st.button("GERAR"):
+            asyncio.run(edge_tts.Communicate(txt, "pt-BR-AntonioNeural").save("v.mp3"))
             st.audio("v.mp3")
-        st.markdown('</div>', unsafe_allow_html=True)
 
-elif menu == "Smart Caption":
-    st.markdown("<h1>SMART <span style='color:#222'>CAPTION</span></h1>", unsafe_allow_html=True)
-    with st.container():
-        st.markdown('<div class="main-card">', unsafe_allow_html=True)
-        up_s = st.file_uploader("Upload Áudio/Vídeo", type=["mp3", "mp4"])
-        if st.button("EXTRAIR SRT"):
-            if up_s:
-                with open("t", "wb") as f: f.write(up_s.read())
-                res = whisper.load_model("tiny").transcribe("t")
-                srt = "".join([f"{i+1}\n{format_srt(s['start'])} --> {format_srt(s['end'])}\n{s['text'].strip().upper()}\n\n" for i, s in enumerate(res['segments'])])
-                st.download_button("BAIXAR SRT", srt, "exd.srt")
+# 2. TELA DO MURAL INFINITO (MODO TELA CHEIA)
+elif st.session_state.view == "canvas":
+    # Botão de Voltar
+    if st.button("← VOLTAR", key="back_btn"):
+        st.session_state.view = "menu"
+        st.rerun()
+
+    # Barra Lateral de Edição (Injetada via Streamlit)
+    with st.sidebar:
+        st.markdown("### 🛠️ FERRAMENTAS")
+        tipo = st.radio("O que quer colar?", ["Texto/Papelzinho", "Imagem/GIF"])
+        
+        with st.form("new_item"):
+            if tipo == "Texto/Papelzinho":
+                content = st.text_area("Escreva aqui...")
+                cor = st.color_picker("Cor do Papel", "#FFFF00")
             else:
-                st.error("Por favor, suba um arquivo de áudio/vídeo.")
-        st.markdown('</div>', unsafe_allow_html=True)
-
-elif menu == "Mural Infinito":
-    st.markdown("<h1>MURAL <span style='color:#222'>DE IDEIAS</span></h1>", unsafe_allow_html=True)
-    st.markdown('<div class="main-card">', unsafe_allow_html=True)
-    
-    st.subheader("Novo Post-it")
-    with st.form("new_post_it_form", clear_on_submit=True):
-        post_title = st.text_input("Título (Opcional)")
-        post_content = st.text_area("Sua Ideia / Mensagem")
-        post_image_url = st.text_input("Link para Imagem/GIF (Opcional)")
-        connect_to_id = st.text_input("Conectar a qual ID de Post-it? (Opcional)", help="Digite o ID de um post-it existente para criar uma conexão visual/lógica.")
+                content = st.text_input("URL da Imagem/GIF")
+                cor = "#FFFFFF"
+            
+            if st.form_submit_button("COLAR NO GRID"):
+                st.session_state.mural_items.append({
+                    "id": str(uuid.uuid4())[:4],
+                    "tipo": tipo,
+                    "content": content,
+                    "cor": cor
+                })
         
-        submitted = st.form_submit_button("ADICIONAR AO MURAL")
-        if submitted and post_content:
-            new_id = str(uuid.uuid4())[:8] # Gera um ID único e curto
-            st.session_state.post_its.append({
-                "id": new_id,
-                "title": post_title,
-                "content": post_content,
-                "image_url": post_image_url,
-                "connected_to": connect_to_id
-            })
-            st.success(f"Post-it '{new_id}' adicionado! Agora, outros podem se conectar a ele.")
-        elif submitted and not post_content:
-            st.warning("O conteúdo do post-it não pode ser vazio!")
+        if st.button("LIMPAR TUDO"):
+            st.session_state.mural_items = []
+            st.rerun()
 
-    st.subheader("Mural de Ideias")
-    if not st.session_state.post_its:
-        st.info("Nenhum post-it no mural ainda. Crie o primeiro!")
-    else:
-        # Exibe os post-its em um grid dinâmico
-        cols = st.columns(3) # Cria 3 colunas para o grid
-        for i, post_it in enumerate(st.session_state.post_its):
-            with cols[i % 3]: # Distribui os post-its nas colunas
-                st.markdown(f"""
-                    <div class="post-it">
-                        <div class="post-it-title">{post_it['title'] or "Sem Título"}</div>
-                        <div class="post-it-content">{post_it['content']}</div>
-                        {'<img src="' + post_it['image_url'] + '" style="max-width:100%; border-radius:5px; margin-top:10px;">' if post_it['image_url'] else ''}
-                        {f'<div style="font-size:0.8em; color:#00D1FF; margin-top:5px;">🔗 Conectado a: {post_it["connected_to"]}</div>' if post_it['connected_to'] else ''}
-                        <div class="post-it-id">ID: {post_it['id']}</div>
-                    </div>
-                """, unsafe_allow_html=True)
+    # ÁREA DO CANVAS (Onde os itens aparecem)
+    st.markdown('<div class="canvas-container">', unsafe_allow_html=True)
     
-    if st.button("LIMPAR MURAL", type="secondary"):
-        st.session_state.post_its = []
-        st.experimental_rerun()
-        
+    # Criar um layout de "mural" dinâmico usando colunas para os itens
+    if st.session_state.mural_items:
+        cols = st.columns(4) # Simula a disposição no grid
+        for i, item in enumerate(st.session_state.mural_items):
+            with cols[i % 4]:
+                if item["tipo"] == "Texto/Papelzinho":
+                    st.markdown(f"""
+                        <div class="post-it" style="background-color: {item['cor']};">
+                            {item['content']}
+                            <br><small style="opacity:0.5; font-size:10px;">#{item['id']}</small>
+                        </div>
+                    """, unsafe_allow_html=True)
+                else:
+                    st.image(item["content"], use_container_width=True)
+    
     st.markdown('</div>', unsafe_allow_html=True)
-
-elif menu == "SEO & Ganchos":
-    st.markdown("<h1>VIRAL <span style='color:#222'>TOOLS</span></h1>", unsafe_allow_html=True)
-    with st.container():
-        st.markdown('<div class="main-card">', unsafe_allow_html=True)
-        tema = st.text_input("Tema do Vídeo")
-        if st.button("GERAR ESTRATÉGIA"):
-            st.info(f"GANCHO: Por que você nunca deve ignorar {tema}...")
-            st.success(f"TAGS: {tema}, edição, viral, tutorial, dicas")
-        st.markdown('</div>', unsafe_allow_html=True)
