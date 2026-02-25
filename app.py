@@ -113,3 +113,64 @@ elif menu == "Smart Caption":
                 srt = "".join([f"{i+1}\n{format_srt(s['start'])} --> {format_srt(s['end'])}\n{s['text'].strip().upper()}\n\n" for i, s in enumerate(res['segments'])])
                 st.download_button("BAIXAR SRT", srt, "exd.srt")
             else:
+                st.error("Por favor, suba um arquivo de áudio/vídeo.")
+        st.markdown('</div>', unsafe_allow_html=True)
+
+elif menu == "Mural Infinito":
+    st.markdown("<h1>MURAL <span style='color:#222'>DE IDEIAS</span></h1>", unsafe_allow_html=True)
+    st.markdown('<div class="main-card">', unsafe_allow_html=True)
+    
+    st.subheader("Novo Post-it")
+    with st.form("new_post_it_form", clear_on_submit=True):
+        post_title = st.text_input("Título (Opcional)")
+        post_content = st.text_area("Sua Ideia / Mensagem")
+        post_image_url = st.text_input("Link para Imagem/GIF (Opcional)")
+        connect_to_id = st.text_input("Conectar a qual ID de Post-it? (Opcional)", help="Digite o ID de um post-it existente para criar uma conexão visual/lógica.")
+        
+        submitted = st.form_submit_button("ADICIONAR AO MURAL")
+        if submitted and post_content:
+            new_id = str(uuid.uuid4())[:8] # Gera um ID único e curto
+            st.session_state.post_its.append({
+                "id": new_id,
+                "title": post_title,
+                "content": post_content,
+                "image_url": post_image_url,
+                "connected_to": connect_to_id
+            })
+            st.success(f"Post-it '{new_id}' adicionado! Agora, outros podem se conectar a ele.")
+        elif submitted and not post_content:
+            st.warning("O conteúdo do post-it não pode ser vazio!")
+
+    st.subheader("Mural de Ideias")
+    if not st.session_state.post_its:
+        st.info("Nenhum post-it no mural ainda. Crie o primeiro!")
+    else:
+        # Exibe os post-its em um grid dinâmico
+        cols = st.columns(3) # Cria 3 colunas para o grid
+        for i, post_it in enumerate(st.session_state.post_its):
+            with cols[i % 3]: # Distribui os post-its nas colunas
+                st.markdown(f"""
+                    <div class="post-it">
+                        <div class="post-it-title">{post_it['title'] or "Sem Título"}</div>
+                        <div class="post-it-content">{post_it['content']}</div>
+                        {'<img src="' + post_it['image_url'] + '" style="max-width:100%; border-radius:5px; margin-top:10px;">' if post_it['image_url'] else ''}
+                        {f'<div style="font-size:0.8em; color:#00D1FF; margin-top:5px;">🔗 Conectado a: {post_it["connected_to"]}</div>' if post_it['connected_to'] else ''}
+                        <div class="post-it-id">ID: {post_it['id']}</div>
+                    </div>
+                """, unsafe_allow_html=True)
+    
+    if st.button("LIMPAR MURAL", type="secondary"):
+        st.session_state.post_its = []
+        st.experimental_rerun()
+        
+    st.markdown('</div>', unsafe_allow_html=True)
+
+elif menu == "SEO & Ganchos":
+    st.markdown("<h1>VIRAL <span style='color:#222'>TOOLS</span></h1>", unsafe_allow_html=True)
+    with st.container():
+        st.markdown('<div class="main-card">', unsafe_allow_html=True)
+        tema = st.text_input("Tema do Vídeo")
+        if st.button("GERAR ESTRATÉGIA"):
+            st.info(f"GANCHO: Por que você nunca deve ignorar {tema}...")
+            st.success(f"TAGS: {tema}, edição, viral, tutorial, dicas")
+        st.markdown('</div>', unsafe_allow_html=True)
