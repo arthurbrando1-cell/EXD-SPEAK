@@ -4,10 +4,15 @@ import edge_tts
 import whisper
 import os
 from moviepy.editor import TextClip, ColorClip, CompositeVideoClip, AudioFileClip
+from moviepy.config import change_settings
 
-# --- CONFIGURAÇÃO DE INTERFACE ---
-st.set_page_config(page_title="EXD STUDIO VIDEO", page_icon="🎬", layout="wide")
+# --- FIX PARA O STREAMLIT CLOUD ENCONTRAR O IMAGEMAGICK ---
+# Isso aponta para o caminho padrão do Linux no Streamlit
+change_settings({"IMAGEMAGICK_BINARY": "/usr/bin/convert"})
 
+st.set_page_config(page_title="EXD STUDIO PRO", page_icon="⚡", layout="wide")
+
+# CSS Premium Original
 st.markdown("""
     <style>
     .stApp { background: radial-gradient(circle at center, #111 0%, #000 100%); color: #fff; }
@@ -18,53 +23,50 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# --- ENGINE DE VÍDEO ---
-def generate_mp4_overlay(audio_path, segments, color_txt, color_glow, font_size):
-    clips = []
+def generate_mp4_overlay(audio_path, segments, color_txt, color_edge, f_size, pos_y):
     audio = AudioFileClip(audio_path)
-    
-    # Fundo Verde para Chroma Key
+    # Fundo Verde Puro
     bg = ColorClip(size=(1080, 1920), color=[0, 255, 0]).set_duration(audio.duration)
     
+    clips = [bg]
     for seg in segments:
         duration = seg['end'] - seg['start']
         if duration <= 0: continue
         
+        # Criando o clip de texto com borda para simular o Glow
         txt = TextClip(
             seg['text'].strip().upper(),
-            fontsize=font_size,
+            fontsize=f_size,
             color=color_txt,
             font='Arial-Bold',
             method='caption',
             size=(900, None),
-            stroke_color=color_glow,
-            stroke_width=2
-        ).set_start(seg['start']).set_duration(duration).set_position('center')
+            stroke_color=color_edge,
+            stroke_width=3
+        ).set_start(seg['start']).set_duration(duration).set_position(('center', pos_y))
         
         clips.append(txt)
     
-    final_video = CompositeVideoClip([bg] + clips).set_audio(audio)
-    output_path = "exd_viral_video.mp4"
-    final_video.write_videofile(output_path, fps=24, codec="libx264", audio_codec="aac")
+    final_video = CompositeVideoClip(clips).set_audio(audio)
+    output_path = "exd_output.mp4"
+    final_video.write_videofile(output_path, fps=24, codec="libx264", audio_codec="aac", temp_audiofile='temp-audio.m4a', remove_temp=True)
     return output_path
 
-# --- SIDEBAR ---
+# --- INTERFACE ---
 st.sidebar.title("EXD STUDIO")
 aba = st.sidebar.radio("TOOLS", ["🎤 SPEAK", "🎬 VIDEO CAPTION"])
 
-# --- ABA SPEAK ---
 if aba == "🎤 SPEAK":
     st.markdown("<h1>EXD <span style='color:#151515'>SPEAK</span></h1>", unsafe_allow_html=True)
     with st.container():
         st.markdown('<div class="main-card">', unsafe_allow_html=True)
-        text_input = st.text_area("ROTEIRO")
+        txt_input = st.text_area("ROTEIRO")
         if st.button("GERAR MP3"):
-            if text_input:
-                asyncio.run(edge_tts.Communicate(text_input, "pt-BR-AntonioNeural").save("out.mp3"))
+            if txt_input:
+                asyncio.run(edge_tts.Communicate(txt_input, "pt-BR-AntonioNeural").save("out.mp3"))
                 st.audio("out.mp3")
         st.markdown('</div>', unsafe_allow_html=True)
 
-# --- ABA VIDEO CAPTION ---
 elif aba == "🎬 VIDEO CAPTION":
     st.markdown("<h1>EXD <span style='color:#151515'>VIDEO</span></h1>", unsafe_allow_html=True)
     with st.container():
@@ -72,26 +74,20 @@ elif aba == "🎬 VIDEO CAPTION":
         up_file = st.file_uploader("UPLOAD (Áudio/Vídeo)", type=["mp3", "mp4", "wav"])
         
         st.markdown("### CUSTOMIZAÇÃO")
-        col1, col2, col3 = st.columns(3)
-        with col1: color_main = st.color_picker("COR TEXTO", "#FFFFFF")
-        with col2: color_edge = st.color_picker("COR BORDA/GLOW", "#9D00FF")
-        with col3: f_size = st.slider("TAMANHO", 50, 150, 90)
+        c1, c2, c3 = st.columns(3)
+        with c1: color_main = st.color_picker("COR TEXTO", "#FFFFFF")
+        with c2: color_edge = st.color_picker("COR BORDA", "#9D00FF")
+        with c3: f_size = st.slider("TAMANHO", 50, 150, 90)
+        
+        pos_y = st.selectbox("POSIÇÃO VERTICAL", options=[400, "center", 1400], format_func=lambda x: "Topo" if x==400 else ("Centro" if x=="center" else "Baixo"))
 
         if st.button("RENDERIZAR MP4"):
             if up_file:
-                with st.spinner("PROCESSANDO VÍDEO..."):
+                with st.spinner("RENDERIZANDO VÍDEO..."):
                     with open("temp_in", "wb") as f: f.write(up_file.read())
-                    
-                    # Transcrição
                     model = whisper.load_model("tiny")
                     result = model.transcribe("temp_in")
-                    
-                    # Geração do MP4
-                    video_out = generate_mp4_overlay("temp_in", result['segments'], color_main, color_edge, f_size)
-                    
+                    video_out = generate_mp4_overlay("temp_in", result['segments'], color_main, color_edge, f_size, pos_y)
                     st.video(video_out)
-                    with open(video_out, "rb") as file:
-                        st.download_button("BAIXAR MP4 OVERLAY", file, "exd_video.mp4")
-            else:
-                st.error("Suba um arquivo primeiro!")
+                    st.download_button("BAIXAR MP4 OVERLAY", open(video_out, "rb"), "exd_video.mp4")
         st.markdown('</div>', unsafe_allow_html=True)
