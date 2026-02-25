@@ -6,7 +6,7 @@ import datetime
 import io
 from PIL import Image
 from streamlit_option_menu import option_menu
-from streamlit_drawable_canvas import st_canvas
+import uuid # Para gerar IDs únicos para os post-its
 import nest_asyncio
 
 # Inicializa o loop para o Voice Engine não travar
@@ -30,6 +30,34 @@ st.markdown("""
     .stButton>button { width: 100%; background: #ffffff; color: #000 !important; font-weight: 900; border-radius: 2px; padding: 12px; transition: 0.3s; }
     .stButton>button:hover { background: #9D00FF; color: #fff !important; box-shadow: 0px 0px 15px #9D00FF; }
     h1 { font-weight: 900; letter-spacing: -3px; font-size: 3.5em !important; }
+
+    /* Estilo do Post-it */
+    .post-it {
+        background-color: #333333; /* Fundo mais escuro */
+        border: 2px solid #555555; /* Borda visível */
+        border-radius: 10px;
+        padding: 15px;
+        margin-bottom: 15px;
+        box-shadow: 3px 3px 8px rgba(0,0,0,0.4);
+        position: relative;
+        word-wrap: break-word; /* Garante que o texto se quebre */
+    }
+    .post-it-title {
+        font-weight: bold;
+        color: #9D00FF; /* Cor vibrante para o título */
+        margin-bottom: 8px;
+        font-size: 1.1em;
+    }
+    .post-it-content {
+        color: #CCCCCC; /* Cor de texto mais clara */
+        font-size: 0.9em;
+    }
+    .post-it-id {
+        font-size: 0.7em;
+        color: #888888;
+        margin-top: 10px;
+        text-align: right;
+    }
     </style>
     <div class="intro-screen"><div class="intro-text">EXD</div></div>
     """, unsafe_allow_html=True)
@@ -39,16 +67,6 @@ def format_srt(seconds):
     td = datetime.timedelta(seconds=seconds)
     return f"{int(td.total_seconds()//3600):02d}:{int(td.total_seconds()%3600//60):02d}:{int(td.total_seconds()%60):02d},{int(td.microseconds/1000):03d}"
 
-def image_to_custom_ascii(img, chars, new_width=100):
-    width, height = img.size
-    new_height = int(new_width * (height / width) * 0.5)
-    img = img.resize((new_width, new_height)).convert("L")
-    pixels = img.getdata()
-    # Mapeamento dinâmico em 4 estágios de luz
-    new_pixels = [chars[min(pixel // 64, 3)] for pixel in pixels]
-    ascii_str = "".join(new_pixels)
-    return "\n".join([ascii_str[i:i + new_width] for i in range(0, len(ascii_str), new_width)])
-
 VOZES = {
     "Antônio (BR)": "pt-BR-AntonioNeural",
     "Francisca (BR)": "pt-BR-FranciscaNeural",
@@ -56,11 +74,15 @@ VOZES = {
     "Jenny (US)": "en-US-JennyNeural"
 }
 
+# --- INICIALIZA O MURAL NO SESSION_STATE ---
+if 'post_its' not in st.session_state:
+    st.session_state.post_its = []
+
 # --- SIDEBAR COM TUDO ---
 with st.sidebar:
     st.markdown("<h2 style='text-align:center'>EXD STUDIO</h2>", unsafe_allow_html=True)
-    menu = option_menu(None, ["Voice Engine", "Smart Caption", "Image Editor", "ASCII Mapper", "SEO & Ganchos"], 
-        icons=["mic", "badge-cc", "brush", "grid-3x3", "lightning"], 
+    menu = option_menu(None, ["Voice Engine", "Smart Caption", "Mural Infinito", "SEO & Ganchos"], 
+        icons=["mic", "badge-cc", "window-grid", "lightning"], 
         menu_icon="cast", default_index=0,
         styles={"container": {"background-color": "#000"}, "nav-link": {"color": "#aaa", "font-size": "12px"}, "nav-link-selected": {"background-color": "#111", "border-left": "3px solid #9D00FF"}})
 
@@ -85,50 +107,9 @@ elif menu == "Smart Caption":
         st.markdown('<div class="main-card">', unsafe_allow_html=True)
         up_s = st.file_uploader("Upload Áudio/Vídeo", type=["mp3", "mp4"])
         if st.button("EXTRAIR SRT"):
-            with open("t", "wb") as f: f.write(up_s.read())
-            res = whisper.load_model("tiny").transcribe("t")
-            srt = "".join([f"{i+1}\n{format_srt(s['start'])} --> {format_srt(s['end'])}\n{s['text'].strip().upper()}\n\n" for i, s in enumerate(res['segments'])])
-            st.download_button("BAIXAR SRT", srt, "exd.srt")
-        st.markdown('</div>', unsafe_allow_html=True)
-
-elif menu == "Image Editor":
-    st.markdown("<h1>IMAGE <span style='color:#222'>EDITOR</span></h1>", unsafe_allow_html=True)
-    st.markdown('<div class="main-card">', unsafe_allow_html=True)
-    bg_file = st.file_uploader("Foto de Fundo", type=["png", "jpg"])
-    c1, c2 = st.columns([1, 4])
-    with c1:
-        tool = st.selectbox("Ferramenta", ["freedraw", "line", "rect", "circle", "transform"])
-        color = st.color_picker("Cor", "#9D00FF")
-        stroke = st.slider("Pincel", 1, 30, 5)
-    with c2:
-        bg_img = Image.open(bg_file) if bg_file else None
-        st_canvas(fill_color="rgba(255,255,255,0.2)", stroke_width=stroke, stroke_color=color, 
-                  background_image=bg_img, drawing_mode=tool, key="canvas_main", height=500, width=700)
-    st.markdown('</div>', unsafe_allow_html=True)
-
-elif menu == "ASCII Mapper":
-    st.markdown("<h1>ASCII <span style='color:#222'>MAPPER</span></h1>", unsafe_allow_html=True)
-    st.markdown('<div class="main-card">', unsafe_allow_html=True)
-    up_a = st.file_uploader("Imagem Base", type=["jpg", "png"])
-    st.write("### Mapeamento de Caracteres")
-    c1, c2, c3, c4 = st.columns(4)
-    ch1 = c1.text_input("Sombra", "@", maxlength=1)
-    ch2 = c2.text_input("Meio-Sombra", "#", maxlength=1)
-    ch3 = c3.text_input("Meio-Luz", "*", maxlength=1)
-    ch4 = c4.text_input("Luz", ".", maxlength=1)
-    res_a = st.slider("Resolução", 50, 200, 100)
-    if st.button("GERAR ASCII"):
-        if up_a:
-            img_a = Image.open(up_a)
-            arte = image_to_custom_ascii(img_a, [ch1, ch2, ch3, ch4], res_a)
-            st.code(arte)
-    st.markdown('</div>', unsafe_allow_html=True)
-
-elif menu == "SEO & Ganchos":
-    st.markdown("<h1>VIRAL <span style='color:#222'>TOOLS</span></h1>", unsafe_allow_html=True)
-    st.markdown('<div class="main-card">', unsafe_allow_html=True)
-    tema = st.text_input("Tema do Vídeo")
-    if st.button("GERAR ESTRATÉGIA"):
-        st.info(f"GANCHO: Por que você nunca deve ignorar {tema}...")
-        st.success(f"TAGS: {tema}, edição, viral, tutorial, dicas")
-    st.markdown('</div>', unsafe_allow_html=True)
+            if up_s:
+                with open("t", "wb") as f: f.write(up_s.read())
+                res = whisper.load_model("tiny").transcribe("t")
+                srt = "".join([f"{i+1}\n{format_srt(s['start'])} --> {format_srt(s['end'])}\n{s['text'].strip().upper()}\n\n" for i, s in enumerate(res['segments'])])
+                st.download_button("BAIXAR SRT", srt, "exd.srt")
+            else:
